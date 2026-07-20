@@ -126,3 +126,10 @@ per model; the seed-stability of the margins is discussed in the thesis.
 The PIE dataset is not redistributed here and must be obtained from its authors
 (Rasouli et al., 2019). The base Qwen2.5-VL-32B-Instruct weights are downloaded from
 Hugging Face. Neither is included in this repository.
+
+The geometric branch uses the pedestrian bounding boxes and ego-vehicle OBD speed
+from PIE's own annotations, but the **pose keypoints are not part of PIE**. They are
+the pre-extracted PIE pose features released with the
+[PedestrianActionBenchmark](https://github.com/ykotseruba/PedestrianActionBenchmark/tree/main/data/features/pie/poses)
+(Kotseruba et al.), reused here via PVIM's PCPA-based preprocessing. `get_pose()`
+reads them from cached `.pkl` files; obtain those from that repository.
