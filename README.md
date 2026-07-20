@@ -100,8 +100,7 @@ needs the base Qwen2.5-VL-32B-Instruct weights to run. Reload one with
 
 The `.safetensors` weight files exceed GitHub's 100 MB per-file limit, so only the
 `adapter_config.json` files are kept in the repository; the weights are hosted on
-Google Drive. See `models/README.md` for the download link and where to place each
-file.
+Google Drive: https://drive.google.com/drive/folders/1OPdc12TH-9mVm4E9on68FUH0g6iT8BO2?usp=drive_link
 
 ## Results
 
