@@ -1,0 +1,57 @@
+#!/bin/bash
+#SBATCH --job-name=lora_search6012
+#SBATCH --partition=gpu_h100
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=12
+#SBATCH --gpus=1
+#SBATCH --mem=128G
+#SBATCH --time=08:00:00
+#SBATCH --array=0-7
+#SBATCH --output=logs/lora_search6012_%A_%a.out
+#SBATCH --error=logs/lora_search6012_%A_%a.err
+
+# Training optimization for the 2-4s LoRA (train [60,120], eval TTE 90).
+# 8-config focused grid (rank fixed at 8), one config per array task (~4.5h each).
+# Each task trains to 4 epochs with per-epoch val/test eval. Resumable: resubmit
+# and any config already in its shard CSV is skipped. Each task writes its own
+# shard CSV, so there is no append contention.
+
+export PYTHONUNBUFFERED=1
+set -ue
+
+module purge
+module load 2023
+module load TensorFlow/2.15.1-foss-2023a-CUDA-12.1.1
+module load PyTorch/2.1.2-foss-2023a-CUDA-12.1.1
+
+cd /scratch-shared/$USER/PVIM-Thesis
+mkdir -p logs results
+source .venv-qwen/bin/activate
+export PYTHONPATH="$PWD:$PWD/future_work:${PYTHONPATH:-}"
+export TRANSFORMERS_OFFLINE=1
+export HF_HUB_OFFLINE=1
+QWEN_MODEL="${QWEN_MODEL:-/scratch-shared/$USER/PVIM-Thesis/models/Qwen2.5-VL-32B-Instruct}"
+
+GRID_SIZE=8
+NTASKS=8
+PER=$(( GRID_SIZE / NTASKS ))          # 1 config per task
+TASK="${SLURM_ARRAY_TASK_ID:-0}"
+START=$(( TASK * PER ))
+END=$(( START + PER ))
+# each task writes its own CSV shard -> no append contention
+OUT="results/lora_search_6012_tte90_shard${TASK}.csv"
+
+echo "=== LoRA 2-4s search - task ${TASK}: configs [${START},${END}) -> ${OUT} - $(date) ==="
+nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv
+
+python -u lora_search_6012.py \
+    --qwen-model "$QWEN_MODEL" \
+    --model-dir data/models/pie/PVIM/ckpt_tte60_120 \
+    --train-config config_files/PVIM_tte60_120.yaml \
+    --test-config config_files/PVIM_eval_tte90.yaml \
+    --start "$START" --end "$END" \
+    --out "$OUT"
+
+echo ""
+echo "=== Task ${TASK} done: $(date) ==="

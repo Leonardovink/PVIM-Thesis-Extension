@@ -1,0 +1,54 @@
+#!/bin/bash
+#SBATCH --job-name=trim
+#SBATCH --partition=gpu_h100
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=12
+#SBATCH --gpus=1
+#SBATCH --mem=128G
+#SBATCH --time=08:00:00
+#SBATCH --output=logs/trim_%j.out
+#SBATCH --error=logs/trim_%j.err
+
+# Experiment B: train an optimised variant with a CUSTOM set of cues trimmed
+# (seed=0, saves adapter, evaluates val + set03 test at TTE 60/90/120).
+# Pass DROP (comma-separated cues, pvim added automatically) and TAG via the
+# environment with --export=ALL, e.g.:
+#   DROP=orientation                TAG=trim1 sbatch --export=ALL run_trim.job
+#   DROP="orientation,gaze"         TAG=trim2 sbatch --export=ALL run_trim.job
+#   DROP="orientation,gaze,movement" TAG=trim3 sbatch --export=ALL run_trim.job
+# (set DROP in the shell, NOT inside --export=..., so its commas aren't parsed as
+#  --export variable separators.)
+
+export PYTHONUNBUFFERED=1
+set -ue
+
+module purge
+module load 2023
+module load TensorFlow/2.15.1-foss-2023a-CUDA-12.1.1
+module load PyTorch/2.1.2-foss-2023a-CUDA-12.1.1
+
+cd /scratch-shared/$USER/PVIM-Thesis
+mkdir -p logs results
+source .venv-qwen/bin/activate
+export PYTHONNOUSERSITE=1
+find .venv-qwen -exec touch -h {} + 2>/dev/null || true
+export PYTHONPATH="$PWD:$PWD/future_work:${PYTHONPATH:-}"
+export TRANSFORMERS_OFFLINE=1
+export HF_HUB_OFFLINE=1
+QWEN_MODEL="${QWEN_MODEL:-/scratch-shared/$USER/PVIM-Thesis/models/Qwen2.5-VL-32B-Instruct}"
+
+DROP="${DROP:?set DROP=orientation[,gaze,...] in the shell}"
+TAG="${TAG:?set TAG=trim1 in the shell}"
+SAVE_DIR="${SAVE_DIR:-/scratch-shared/$USER/PVIM-Thesis/data/models/promptstudy}"
+
+echo "=== Trim run: drop=${DROP} tag=${TAG} - Start: $(date) ==="
+nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv
+
+python -u lora_prompt_variant.py \
+    --qwen-model "$QWEN_MODEL" \
+    --model-dir data/models/pie/PVIM/ckpt_tte60_120 \
+    --drop "$DROP" --tag "$TAG" --save-dir "$SAVE_DIR" --eval-test
+
+echo ""
+echo "=== Done: $(date) ==="

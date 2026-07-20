@@ -1,0 +1,60 @@
+#!/bin/bash
+#SBATCH --job-name=abl_6cue
+#SBATCH --partition=gpu_h100
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=12
+#SBATCH --gpus=1
+#SBATCH --mem=128G
+#SBATCH --time=08:00:00
+#SBATCH --array=0-6
+#SBATCH --output=logs/abl_6cue_%A_%a.out
+#SBATCH --error=logs/abl_6cue_%A_%a.err
+
+# Experiment A: in-regime leave-one-out ablation over the 6 remaining prompt cues
+# (PVIM already removed by design). Optimised config (cosine, 1 epoch, 2-4s).
+# Each task drops {pvim, <cue>} and is RANKED ON THE VALIDATION SET (set05/06);
+# set03 is not touched. Task 6 is the no-PVIM baseline (drop pvim only).
+
+export PYTHONUNBUFFERED=1
+set -ue
+
+module purge
+module load 2023
+module load TensorFlow/2.15.1-foss-2023a-CUDA-12.1.1
+module load PyTorch/2.1.2-foss-2023a-CUDA-12.1.1
+
+cd /scratch-shared/$USER/PVIM-Thesis
+mkdir -p logs results
+source .venv-qwen/bin/activate
+export PYTHONNOUSERSITE=1   # ignore ~/.local (a broken matplotlib/kiwisolver lives there)
+if [ "${SLURM_ARRAY_TASK_ID:-0}" = "0" ]; then
+    find .venv-qwen -exec touch -h {} + 2>/dev/null || true   # keep venv timestamps fresh
+fi
+export PYTHONPATH="$PWD:$PWD/future_work:${PYTHONPATH:-}"
+export TRANSFORMERS_OFFLINE=1
+export HF_HUB_OFFLINE=1
+QWEN_MODEL="${QWEN_MODEL:-/scratch-shared/$USER/PVIM-Thesis/models/Qwen2.5-VL-32B-Instruct}"
+
+# task -> cue dropped (in addition to pvim). Task 6 = baseline (pvim only).
+CUES=(orientation gaze movement posture context speed none)
+TASK="${SLURM_ARRAY_TASK_ID:-0}"
+CUE="${CUES[$TASK]}"
+if [ "$CUE" = "none" ]; then DROP="pvim"; TAG="base_nopvim"; else DROP="pvim,$CUE"; TAG="drop_$CUE"; fi
+
+echo "=== Ablation task ${TASK}: drop=${DROP} tag=${TAG} - Start: $(date) ==="
+nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv
+
+# Adapters are saved to $SAVE_DIR/<tag>/ so any variant can be re-evaluated later
+# with --from-adapter (no retrain). Override with --export=ALL,SAVE_DIR=... at sbatch time.
+SAVE_DIR="${SAVE_DIR:-/scratch-shared/$USER/PVIM-Thesis/data/models/promptstudy}"
+
+python -u lora_prompt_variant.py \
+    --qwen-model "$QWEN_MODEL" \
+    --model-dir data/models/pie/PVIM/ckpt_tte60_120 \
+    --drop "$DROP" --tag "$TAG" \
+    --save-dir "$SAVE_DIR" \
+    --eval-test
+
+echo ""
+echo "=== Task ${TASK} done: $(date) ==="

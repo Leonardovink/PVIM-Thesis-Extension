@@ -1,0 +1,23 @@
+# Package versions used for the honours extension.
+# torch (2.1.2, CUDA 12.1), tensorflow, and numpy (1.25.x) come from the Snellius
+# cluster modules rather than pip; setup_env.sh loads them. The full frozen
+# environment, including those, is in requirements-lock.txt. On other machines,
+# install a matching torch first, then the packages below.
+
+# torchvision must match the torch build:
+#   pip install torchvision==0.16.2+cu121 --index-url https://download.pytorch.org/whl/cu121
+
+transformers==4.54.1
+huggingface_hub==0.34.4
+safetensors==0.4.5
+tokenizers==0.21.4
+qwen-vl-utils==0.0.14
+accelerate==1.1.1
+peft==0.13.2
+opencv-python-headless==5.0.0.93
+scikit-learn==1.9.0
+matplotlib==3.11.0
+einops==0.8.2
+pandas
+pyyaml
+wget==3.2

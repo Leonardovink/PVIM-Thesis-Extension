@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+*.pyo
+
+# environments
+.venv/
+venv/
+env/
+
+# PIE dataset is not redistributed
+data/
+VIDEOS/
+*.pkl
+
+# adapter weights are hosted on Google Drive (over GitHub's 100 MB file limit),
+# only the adapter_config.json files are tracked here
+*.safetensors
+
+# scratch / logs
+logs/
+*.out
+*.err
+.DS_Store

@@ -1,0 +1,47 @@
+#!/bin/bash
+#SBATCH --job-name=qwen_lora
+#SBATCH --partition=gpu_h100
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=12
+#SBATCH --gpus=1
+#SBATCH --mem=128G
+#SBATCH --time=24:00:00
+#SBATCH --output=logs/qwen_lora_%j.out
+#SBATCH --error=logs/qwen_lora_%j.err
+
+# QLoRA fine-tuning of Qwen2.5-VL-32B on PIE crossing labels
+# Requires: peft, bitsandbytes (install into venv before running)
+
+export PYTHONUNBUFFERED=1
+set -ue
+
+module purge
+module load 2023
+module load TensorFlow/2.15.1-foss-2023a-CUDA-12.1.1
+module load PyTorch/2.1.2-foss-2023a-CUDA-12.1.1
+
+cd /scratch-shared/$USER/PVIM-Thesis
+mkdir -p logs data/models/qwen_lora_pie
+source .venv-qwen/bin/activate
+export PYTHONPATH="$PWD:${PYTHONPATH:-}"
+export TRANSFORMERS_OFFLINE=1
+export HF_HUB_OFFLINE=1
+QWEN_MODEL="${QWEN_MODEL:-/scratch-shared/$USER/PVIM-Thesis/models/Qwen2.5-VL-32B-Instruct}"
+MODEL_DIR=data/models/pie/PVIM/ckpt_tte60_120
+
+# bf16 LoRA: peft only, and remove any bitsandbytes (its newest build breaks
+# torch 2.1.2 and peft auto-imports it for LoRA dispatch if present)
+pip uninstall -y bitsandbytes 2>/dev/null || true
+pip install --quiet --no-deps peft
+
+echo "=== QLoRA fine-tune - Start: $(date) ==="
+nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv
+
+python -u lora_finetune_qwen.py \
+    --qwen-model "$QWEN_MODEL" \
+    --model-dir "$MODEL_DIR" \
+    --epochs 3
+
+echo ""
+echo "=== Done: $(date) ==="

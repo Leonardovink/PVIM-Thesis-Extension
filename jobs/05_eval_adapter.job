@@ -1,0 +1,51 @@
+#!/bin/bash
+#SBATCH --job-name=eval_adapter
+#SBATCH --partition=gpu_h100
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=12
+#SBATCH --gpus=1
+#SBATCH --mem=128G
+#SBATCH --time=02:00:00
+#SBATCH --output=logs/eval_adapter_%j.out
+#SBATCH --error=logs/eval_adapter_%j.err
+
+# Re-evaluate a SAVED prompt-study adapter on val + set03 test (TTE 60/90/120)
+# by inference only - no training. ~1 h, ~200 SBU.
+#   sbatch --export=ALL,TAG=drop_orientation,DROP=orientation run_eval_adapter.job
+
+export PYTHONUNBUFFERED=1
+set -ue
+
+module purge
+module load 2023
+module load TensorFlow/2.15.1-foss-2023a-CUDA-12.1.1
+module load PyTorch/2.1.2-foss-2023a-CUDA-12.1.1
+
+cd /scratch-shared/$USER/PVIM-Thesis
+mkdir -p logs results
+source .venv-qwen/bin/activate
+export PYTHONNOUSERSITE=1
+export PYTHONPATH="$PWD:$PWD/future_work:${PYTHONPATH:-}"
+export TRANSFORMERS_OFFLINE=1
+export HF_HUB_OFFLINE=1
+QWEN_MODEL="${QWEN_MODEL:-/scratch-shared/$USER/PVIM-Thesis/models/Qwen2.5-VL-32B-Instruct}"
+
+TAG="${TAG:-drop_orientation}"
+DROP="${DROP:-orientation}"
+SAVE_DIR="${SAVE_DIR:-/scratch-shared/$USER/PVIM-Thesis/data/models/promptstudy}"
+ADAPTER="${ADAPTER:-$SAVE_DIR/$TAG}"        # full path to the adapter to load
+EVAL_TEST_FLAG=""                            # EVAL_TEST=0 -> val only (cheap); default adds set03 test
+if [ "${EVAL_TEST:-1}" = "1" ]; then EVAL_TEST_FLAG="--eval-test"; fi
+
+echo "=== Eval adapter: tag=${TAG} drop=${DROP} from=${ADAPTER} eval_test=${EVAL_TEST:-1} - Start: $(date) ==="
+nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv
+
+python -u lora_prompt_variant.py \
+    --qwen-model "$QWEN_MODEL" \
+    --model-dir data/models/pie/PVIM/ckpt_tte60_120 \
+    --from-adapter "$ADAPTER" \
+    --drop "$DROP" --tag "$TAG" $EVAL_TEST_FLAG
+
+echo ""
+echo "=== Done: $(date) ==="
